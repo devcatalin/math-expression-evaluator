@@ -1,0 +1,220 @@
+<pre style="margin:0em; overflow:auto; background-color:#ffffff;"><code style="font-family:Consolas,&quot;Courier New&quot;,Courier,Monospace; font-size:10pt; color:#000000;"><span style="color:#0000ff;">using</span> System;
+<span style="color:#0000ff;">using</span> System.Collections;
+<span style="color:#0000ff;">using</span> System.Collections.Generic;
+<span style="color:#0000ff;">using</span> System.Data;
+<span style="color:#0000ff;">using</span> System.Linq;
+<span style="color:#0000ff;">using</span> System.Runtime.Remoting.Metadata.W3cXsd2001;
+<span style="color:#0000ff;">using</span> System.Text;
+<span style="color:#0000ff;">using</span> System.Text.RegularExpressions;
+<span style="color:#0000ff;">using</span> System.Threading.Tasks;
+
+<span style="color:#0000ff;">namespace</span> FLAT_Project
+{
+    <span style="color:#0000ff;">class</span> Program
+    {
+        <span style="color:#0000ff;">private</span> <span style="color:#0000ff;">const</span> <span style="color:#0000ff;">string</span> Operators = <span style="color:#a31515;">"+-*/%^"</span>;
+        <span style="color:#0000ff;">private</span> <span style="color:#0000ff;">const</span> <span style="color:#0000ff;">string</span> LeftParenthesis = <span style="color:#a31515;">"("</span>;
+        <span style="color:#0000ff;">private</span> <span style="color:#0000ff;">const</span> <span style="color:#0000ff;">string</span> RightParenthesis = <span style="color:#a31515;">")"</span>;
+
+        <span style="color:#008000;">/// &lt;summary&gt;</span>
+        <span style="color:#008000;">/// Stores the values of each mathematical variable (letter)</span>
+        <span style="color:#008000;">/// &lt;/summary&gt;</span>
+        <span style="color:#0000ff;">private</span> <span style="color:#0000ff;">static</span> Dictionary&lt;<span style="color:#0000ff;">char</span>, <span style="color:#0000ff;">double</span>&gt; Variables { <span style="color:#0000ff;">get</span>; } = <span style="color:#0000ff;">new</span> Dictionary&lt;<span style="color:#0000ff;">char</span>, <span style="color:#0000ff;">double</span>&gt;();
+
+        <span style="color:#008000;">/// &lt;summary&gt;</span>
+        <span style="color:#008000;">/// Replaces all positive and negative floating numbers from an infix expression with letters.</span>
+        <span style="color:#008000;">/// &lt;/summary&gt;</span>
+        <span style="color:#008000;">/// &lt;param name="expression"&gt;The mathematical expression&lt;/param&gt;</span>
+        <span style="color:#008000;">/// &lt;returns&gt;Returns the new infix expression&lt;/returns&gt;</span>
+        <span style="color:#0000ff;">static</span> <span style="color:#0000ff;">string</span> NormalizeInfixExpression(<span style="color:#0000ff;">string</span> expression)
+        {
+            <span style="color:#008000;">/*
+             * Regex details:
+             *      (?:(?&lt;![)0-9])-)? = an optional non-capturing group matching 1 or 0 occurences of:
+             *          (?&lt;![)0-9]) = a place in string that is not immediately proceded with a ) or digit
+             *          '-' = a minus
+             *      [0-9]+ = one or more digits
+             *      (?:\.[0-9]+)? = an optional non-capturing group matching 1 or 0 occurences of a dot followed with one or more digits
+             */</span>
+            Regex rx = <span style="color:#0000ff;">new</span> Regex(@<span style="color:#a31515;">"(?:(?&lt;![)0-9])-)?[0-9]+(?:\.[0-9]+)?"</span>);
+            <span style="color:#0000ff;">char</span> letter = (<span style="color:#0000ff;">char</span>) 96; <span style="color:#008000;">// char before 'a' in ASCII table</span>
+            <span style="color:#0000ff;">string</span> result = rx.Replace(expression, m =&gt;
+                {
+                    letter++; <span style="color:#008000;">// char is incremented</span>
+                    <span style="color:#0000ff;">double</span> value;
+                    <span style="color:#0000ff;">if</span> (!Double.TryParse(m.Value, <span style="color:#0000ff;">out</span> value))
+                    {
+                        <span style="color:#0000ff;">throw</span> <span style="color:#0000ff;">new</span> Exception(<span style="color:#a31515;">"Invalid input!"</span>);
+                    }
+                    Variables[letter] = value; <span style="color:#008000;">// the value of each letter is saved in a Dictionary</span>
+                    <span style="color:#0000ff;">return</span> letter.ToString();
+                }
+            );
+
+            <span style="color:#008000;">// This foreach replaces all occurences of (nr) with nr</span>
+            <span style="color:#0000ff;">foreach</span> (<span style="color:#0000ff;">char</span> c <span style="color:#0000ff;">in</span> result)
+            {
+                <span style="color:#0000ff;">if</span> (<span style="color:#0000ff;">char</span>.IsLetter(c))
+                {
+                    result = result.Replace($<span style="color:#a31515;">"({c})"</span>, c.ToString());
+                }
+            }
+
+            <span style="color:#0000ff;">return</span> result;
+        }
+
+        <span style="color:#008000;">/// &lt;summary&gt;</span>
+        <span style="color:#008000;">/// Checks if op1 has a lower or equal precedence with op2</span>
+        <span style="color:#008000;">/// &lt;/summary&gt;</span>
+        <span style="color:#008000;">/// &lt;param name="op1"&gt;First operator&lt;/param&gt;</span>
+        <span style="color:#008000;">/// &lt;param name="op2"&gt;Second operator&lt;/param&gt;</span>
+        <span style="color:#0000ff;">static</span> <span style="color:#0000ff;">bool</span> CheckPrecedence(<span style="color:#0000ff;">string</span> op1, <span style="color:#0000ff;">string</span> op2)
+        {
+            <span style="color:#0000ff;">return</span> Operators.IndexOf(op1, StringComparison.Ordinal) &lt;= Operators.IndexOf(op2, StringComparison.Ordinal);
+        }
+
+        <span style="color:#008000;">/// &lt;summary&gt;</span>
+        <span style="color:#008000;">/// Converts an infix expression into a postfix expression</span>
+        <span style="color:#008000;">/// &lt;/summary&gt;</span>
+        <span style="color:#008000;">/// &lt;param name="infix"&gt;The infix expression&lt;/param&gt;</span>
+        <span style="color:#008000;">/// &lt;returns&gt;Returns the postfix expression&lt;/returns&gt;</span>
+        <span style="color:#0000ff;">static</span> <span style="color:#0000ff;">string</span> ConvertInfixToPostfix(<span style="color:#0000ff;">string</span> infix)
+        {
+            Stack&lt;<span style="color:#0000ff;">string</span>&gt; stack = <span style="color:#0000ff;">new</span> Stack&lt;<span style="color:#0000ff;">string</span>&gt;();
+
+            <span style="color:#0000ff;">string</span> postfix = <span style="color:#0000ff;">string</span>.Empty;
+
+            <span style="color:#0000ff;">foreach</span> (<span style="color:#0000ff;">char</span> character <span style="color:#0000ff;">in</span> infix)
+            {
+                <span style="color:#0000ff;">if</span> (<span style="color:#0000ff;">char</span>.IsLetter(character))
+                {
+                    postfix += character;
+                    <span style="color:#0000ff;">continue</span>;
+                }
+
+                <span style="color:#0000ff;">if</span> (character.ToString() == LeftParenthesis)
+                {
+                    stack.Push(character.ToString());
+                    <span style="color:#0000ff;">continue</span>;
+                }
+
+                <span style="color:#0000ff;">if</span> (character.ToString() == RightParenthesis)
+                {
+                    <span style="color:#0000ff;">while</span> (stack.Count != 0 && stack.Peek() != LeftParenthesis)
+                    {
+                        postfix += stack.Pop();
+                    }
+
+                    stack.Pop();
+                    <span style="color:#0000ff;">continue</span>;
+                }
+
+                <span style="color:#0000ff;">if</span> (Operators.Contains(character))
+                {
+                    <span style="color:#0000ff;">if</span> (stack.Count == 0 || stack.Peek() == LeftParenthesis)
+                    {
+                        stack.Push(character.ToString());
+                    }
+                    <span style="color:#0000ff;">else</span>
+                    {
+                        <span style="color:#0000ff;">while</span> (stack.Count != 0 && stack.Peek() != LeftParenthesis &&
+                               CheckPrecedence(character.ToString(), stack.Peek()))
+                        {
+                            postfix += stack.Pop();
+                        }
+
+                        stack.Push(character.ToString());
+                    }
+                }
+            }
+
+            <span style="color:#0000ff;">while</span> (stack.Count != 0)
+            {
+                postfix += stack.Pop();
+            }
+
+            <span style="color:#0000ff;">return</span> postfix;
+        }
+
+        <span style="color:#008000;">/// &lt;summary&gt;</span>
+        <span style="color:#008000;">/// Evaluates a mathematical postfix expression</span>
+        <span style="color:#008000;">/// &lt;/summary&gt;</span>
+        <span style="color:#008000;">/// &lt;param name="expression"&gt;The postfix expression&lt;/param&gt;</span>
+        <span style="color:#008000;">/// &lt;returns&gt;Returns the result of the evaluation&lt;/returns&gt;</span>
+        <span style="color:#0000ff;">static</span> <span style="color:#0000ff;">double</span> EvaluatePostfixExpression(<span style="color:#0000ff;">string</span> expression)
+        {
+            Stack&lt;<span style="color:#0000ff;">double</span>&gt; stack = <span style="color:#0000ff;">new</span> Stack&lt;<span style="color:#0000ff;">double</span>&gt;();
+            <span style="color:#0000ff;">foreach</span> (<span style="color:#0000ff;">var</span> character <span style="color:#0000ff;">in</span> expression)
+            {
+                <span style="color:#0000ff;">if</span> (<span style="color:#0000ff;">char</span>.IsLetter(character))
+                {
+                    stack.Push(Variables[character]);
+                    <span style="color:#0000ff;">continue</span>;
+                }
+
+                <span style="color:#0000ff;">if</span> (Operators.Contains(character))
+                {
+                    <span style="color:#0000ff;">double</span> A = stack.Pop();
+                    <span style="color:#0000ff;">double</span> B = stack.Pop();
+                    <span style="color:#0000ff;">switch</span> (character)
+                    {
+                        <span style="color:#0000ff;">case</span> <span style="color:#a31515;">'^'</span>:
+                            stack.Push(Math.Pow(B, A));
+                            <span style="color:#0000ff;">break</span>;
+                        <span style="color:#0000ff;">case</span> <span style="color:#a31515;">'*'</span>:
+                            stack.Push(B * A);
+                            <span style="color:#0000ff;">break</span>;
+                        <span style="color:#0000ff;">case</span> <span style="color:#a31515;">'/'</span>:
+                            stack.Push(B / A);
+                            <span style="color:#0000ff;">break</span>;
+                        <span style="color:#0000ff;">case</span> <span style="color:#a31515;">'+'</span>:
+                            stack.Push(B + A);
+                            <span style="color:#0000ff;">break</span>;
+                        <span style="color:#0000ff;">case</span> <span style="color:#a31515;">'-'</span>:
+                            stack.Push(B - A);
+                            <span style="color:#0000ff;">break</span>;
+                        <span style="color:#0000ff;">case</span> <span style="color:#a31515;">'%'</span>:
+                            stack.Push(B % A);
+                            <span style="color:#0000ff;">break</span>;
+                    }
+                }
+                <span style="color:#0000ff;">else</span>
+                {
+                    <span style="color:#0000ff;">throw</span> <span style="color:#0000ff;">new</span> Exception(<span style="color:#a31515;">"Invalid input!"</span>);
+                }
+            }
+
+            <span style="color:#0000ff;">return</span> stack.Pop();
+        }
+
+        <span style="color:#0000ff;">static</span> <span style="color:#0000ff;">void</span> Main(<span style="color:#0000ff;">string</span>[] args)
+        {
+            <span style="color:#008000;">// The commented results are from http://www.wolframalpha.com/</span>
+            List&lt;<span style="color:#0000ff;">string</span>&gt; expressions = <span style="color:#0000ff;">new</span> List&lt;<span style="color:#0000ff;">string</span>&gt;()
+            {
+                <span style="color:#a31515;">"1+2+3+4+(-1)-2"</span>, <span style="color:#008000;">// 7</span>
+                <span style="color:#a31515;">"((-2*(-4))^2)%2"</span>, <span style="color:#008000;">// 0</span>
+                <span style="color:#a31515;">"(-1)*3+(-2)/1+3.5"</span>, <span style="color:#008000;">// -1.5</span>
+                <span style="color:#a31515;">"10^3-(-100*(-5)+5.12345)"</span>, <span style="color:#008000;">// 494.87655</span>
+                <span style="color:#a31515;">"(1+5)*(-3)"</span>, <span style="color:#008000;">// -18</span>
+                <span style="color:#a31515;">"(2*3)^2-5+(-2)"</span>, <span style="color:#008000;">// 29</span>
+                <span style="color:#a31515;">"(((-30)+5.2)*(2+7))-((-3.1*2.5)-9.12-3)"</span> <span style="color:#008000;">// -203.33</span>
+            };
+
+            <span style="color:#0000ff;">foreach</span> (<span style="color:#0000ff;">string</span> expression <span style="color:#0000ff;">in</span> expressions)
+            {
+                Console.WriteLine(<span style="color:#a31515;">"Expression: "</span> + expression);
+                <span style="color:#0000ff;">string</span> infix = NormalizeInfixExpression(expression);
+                Console.WriteLine(<span style="color:#a31515;">"Infix: "</span> + infix);
+                <span style="color:#0000ff;">string</span> postfix = ConvertInfixToPostfix(infix);
+                Console.WriteLine(<span style="color:#a31515;">"Postfix: "</span> + postfix);
+                <span style="color:#0000ff;">double</span> result = EvaluatePostfixExpression(postfix);
+                Console.WriteLine(<span style="color:#a31515;">"Result: "</span> + result + Environment.NewLine);
+                Variables.Clear();
+            }
+
+            Console.ReadKey();
+        }
+    }
+}
+</code></pre>
